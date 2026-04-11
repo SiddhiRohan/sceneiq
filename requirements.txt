@@ -1,0 +1,29 @@
+# Core ML
+torch==2.6.0
+torchvision==0.21.0
+transformers==4.48.1
+datasets==3.2.0
+
+# Graph Neural Networks
+torch-geometric==2.6.1
+
+# Image augmentation
+albumentations==2.0.4
+
+# Classical ML & data
+scikit-learn==1.6.1
+pandas==2.2.3
+numpy==2.2.2
+Pillow==11.1.0
+
+# Experiment tracking
+wandb==0.19.6
+
+# Visualization
+matplotlib==3.10.0
+seaborn==0.13.2
+
+# Utilities
+tqdm==4.67.1
+requests==2.32.3
+gdown==5.2.0

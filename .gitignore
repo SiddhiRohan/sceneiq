@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data (large files — track with DVC or download via scripts)
+data/raw/
+data/processed/
+data/synthetic/
+data/thumbnails/
+
+# Model checkpoints (large)
+models/*.pt
+models/*.pth
+models/*.bin
+models/*.ckpt
+
+# Logs
+*.log
+logs/
+
+# WandB
+wandb/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env

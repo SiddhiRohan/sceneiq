@@ -109,6 +109,41 @@ def load_json(path: str | Path):
     return data
 
 
+# ── Visual Genome helpers ────────────────────────────────────────────────────
+
+def normalise_name(name: str) -> str:
+    """Lowercase and strip a label; return empty string if falsy.
+
+    Args:
+        name: Raw object or predicate string.
+
+    Returns:
+        Cleaned label suitable for use as a dictionary key.
+    """
+    if not name:
+        return ""
+    return name.strip().lower()
+
+
+def extract_object_name(obj: dict) -> str:
+    """Return the canonical name of a Visual Genome object dict.
+
+    VG objects may use ``names`` (list) or ``name`` (string); the first entry of
+    ``names`` wins when both are present.
+
+    Args:
+        obj: Visual Genome object dict.
+
+    Returns:
+        Normalised object name, or empty string if unavailable.
+    """
+    if "names" in obj and obj["names"]:
+        return normalise_name(obj["names"][0])
+    if "name" in obj:
+        return normalise_name(obj["name"])
+    return ""
+
+
 # ── Timer decorator ──────────────────────────────────────────────────────────
 
 def timer(func):

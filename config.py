@@ -21,7 +21,7 @@ RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
 SYNTHETIC_DIR = DATA_DIR / "synthetic"
 THUMBNAILS_DIR = DATA_DIR / "thumbnails"
-MODELS_DIR = PROJECT_ROOT / "models"
+MODELS_DIR = PROJECT_ROOT / "checkpoints"   # trained-weight checkpoints (models/ is now the Python package)
 CONFIGS_DIR = PROJECT_ROOT / "configs"
 EVALUATION_DIR = PROJECT_ROOT / "evaluation"
 LOGS_DIR = PROJECT_ROOT / "logs"
@@ -64,6 +64,50 @@ BATCH_SIZE = 32
 NUM_WORKERS = 4
 LEARNING_RATE = 2e-5
 NUM_EPOCHS = 10
+
+# Model-mode constants used by scripts/train.py --mode
+MODE_VIT = "vit"
+MODE_GAT = "gat"
+MODE_FUSION = "fusion"
+MODEL_MODES = (MODE_VIT, MODE_GAT, MODE_FUSION)
+
+# ViT patch grid size (224 / 16 = 14) — localization heatmap resolution.
+PATCH_GRID = 14
+
+# =============================================================================
+# MS-COCO (coherent image source + category/caption annotations)
+# =============================================================================
+MSCOCO_ANNOTATIONS_URL = (
+    "http://images.cocodataset.org/annotations/annotations_trainval2017.zip"
+)
+# URL template — plug split ∈ {train2017, val2017, test2017} and image_id.
+MSCOCO_IMAGE_URL_TEMPLATE = "http://images.cocodataset.org/{split}/{image_id:012d}.jpg"
+MSCOCO_INDEX_DIR = PROCESSED_DIR / "mscoco"
+MSCOCO_DEFAULT_SPLIT = "val2017"   # val2017 is 5K images — enough for a coherent pool
+
+# =============================================================================
+# VisualCOMET (commonsense inferences: before/after/intent)
+# =============================================================================
+VISUALCOMET_ANNOTATIONS_URL = "https://visualcomet.xyz/data/visualcomet.zip"
+VISUALCOMET_INDEX_DIR = PROCESSED_DIR / "visualcomet"
+
+# =============================================================================
+# Scene-graph module (GAT branch)
+# =============================================================================
+SCENE_GRAPH_DIR = PROCESSED_DIR / "scene_graphs"
+SG_OBJECT_VOCAB_SIZE = 2000      # Truncate to the N most frequent object labels
+SG_PREDICATE_VOCAB_SIZE = 500    # Truncate to the N most frequent predicates
+SG_EMBED_DIM = 128               # Per-node/edge embedding dimension
+GAT_HIDDEN_DIM = 256             # Hidden size inside the GAT branch
+GAT_NUM_HEADS = 4                # Attention heads inside the GAT
+GAT_NUM_LAYERS = 2               # Stacked GAT layers
+SG_MAX_OBJECTS = 36              # Cap per-image scene graph size for batching
+
+# =============================================================================
+# Losses
+# =============================================================================
+LOC_LOSS_WEIGHT = 1.0            # Weight on soft-IoU localization loss
+BCE_LOSS_WEIGHT = 1.0            # Weight on binary coherence BCE loss
 
 # =============================================================================
 # WandB

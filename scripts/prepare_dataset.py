@@ -9,13 +9,17 @@ Combines two sources into a single labelled dataset manifest:
 * **Incoherent (label=1)** — the synthetic images produced by
   ``generate_synthetic.py`` (read from ``data/synthetic/metadata.json``).
 
+Incoherent records additionally carry ``paste_bbox`` (the destination
+``(x, y, w, h)`` where the alien object was pasted) and
+``scene_image_id`` so downstream localization supervision and the
+scene-graph branch have what they need.
+
 The resulting manifest is split 70/15/15 (train/val/test) with a reproducible
 seed, and written as three JSON files to ``data/processed/splits/``. Coherent
 images are downloaded on demand into ``data/raw/visual_genome/images/`` so
 every record in every split has a usable local path.
 
-Downstream training code (``train.py``) just loads these JSONs and doesn't need
-to know anything about VG's structure.
+Downstream training code (``train.py``) just loads these JSONs.
 """
 
 import argparse
@@ -30,6 +34,8 @@ from tqdm import tqdm
 # Allow imports from project root
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import (
+    MSCOCO_DEFAULT_SPLIT,
+    MSCOCO_INDEX_DIR,
     PROCESSED_DIR,
     RANDOM_SEED,
     SYNTHETIC_DIR,
@@ -72,9 +78,45 @@ def sample_coherent_records(
     rng.shuffle(eligible)
     chosen = eligible[:n_samples]
     return [
-        {"image_id": e["image_id"], "url": e["url"], "label": 0}
+        {
+            "image_id": e["image_id"],
+            "scene_image_id": e["image_id"],   # mirror so the GAT branch has one field to key on
+            "url": e["url"],
+            "label": 0,
+        }
         for e in chosen
     ]
+
+
+def load_coco_records(coco_index_path: Path, n_samples: int, rng: random.Random) -> list:
+    """Load COCO coherent records and subsample to ``n_samples``.
+
+    COCO records already follow the coherent-record schema
+    (``image_id`` / ``url`` / ``label=0``) so they plug into the same pipeline
+    as VG samples without transformation.
+
+    Args:
+        coco_index_path: Path to ``coherent_records_<split>.json`` produced by
+            ``scripts/build_coco_index.py``.
+        n_samples: Max number of COCO records to draw (<=0 keeps all).
+        rng: Random generator.
+
+    Returns:
+        List of COCO coherent records (each with ``"source": "coco"``).
+    """
+    if not coco_index_path.exists():
+        logger.warning("COCO index not found at %s — skipping COCO coherent pool.",
+                       coco_index_path)
+        return []
+    data = load_json(coco_index_path)
+    rng.shuffle(data)
+    if n_samples > 0:
+        data = data[:n_samples]
+    for rec in data:
+        rec.setdefault("label", 0)
+        rec.setdefault("source", "coco")
+    logger.info("COCO coherent records loaded: %d", len(data))
+    return data
 
 
 def fetch_coherent_images(records: list, cache_dir: Path) -> list:
@@ -115,6 +157,9 @@ def load_incoherent_records(
 ) -> tuple[list, set]:
     """Load synthetic metadata and turn it into labelled records.
 
+    Propagates the ``paste_bbox`` written by ``generate_synthetic.py`` so that
+    downstream training has pixel-space ground truth for localization.
+
     Args:
         synthetic_dir: Directory containing ``metadata.json`` and ``images/``.
         n_samples: Max incoherent records to keep (``<=0`` keeps all).
@@ -122,8 +167,8 @@ def load_incoherent_records(
 
     Returns:
         Tuple of:
-          * List of records ``{"image_path": str, "alien_object": str,
-            "scene_image_id": int, "label": 1}``.
+          * List of records ``{"image_path", "alien_object", "scene_image_id",
+            "paste_bbox", "alien_source_image_id", "label": 1}``.
           * Set of scene image_ids used as destinations (for leakage exclusion).
     """
     meta_path = synthetic_dir / "metadata.json"
@@ -131,17 +176,31 @@ def load_incoherent_records(
 
     records: list = []
     scene_ids: set = set()
+    missing_bbox = 0
     for m in metadata:
         img_path = synthetic_dir / m["output_path"]
         if not img_path.exists():
+            continue
+        paste_bbox = m.get("paste_bbox")
+        if paste_bbox is None:
+            missing_bbox += 1
             continue
         records.append({
             "image_path": str(img_path),
             "alien_object": m["alien_object"],
             "scene_image_id": m["scene_image_id"],
+            "alien_source_image_id": m.get("alien_source_image_id"),
+            "paste_bbox": list(paste_bbox),     # [x, y, w, h] in pixel coords of the composited image
             "label": 1,
         })
         scene_ids.add(m["scene_image_id"])
+
+    if missing_bbox:
+        logger.warning(
+            "Skipped %d synthetic records without paste_bbox. "
+            "Re-run generate_synthetic.py so paste_bbox is recorded.",
+            missing_bbox,
+        )
 
     rng.shuffle(records)
     if n_samples > 0:
@@ -206,20 +265,14 @@ def main(
     val_frac: float,
     seed: int,
     skip_download: bool,
+    coco_index_path: Path | None = None,
+    coco_fraction: float = 0.0,
 ) -> None:
     """Assemble and write train/val/test splits.
 
-    Args:
-        vg_dir: Directory with VG JSON files + ``images/`` cache.
-        synthetic_dir: Directory with ``metadata.json`` + ``images/``.
-        output_dir: Where to write the split JSONs.
-        n_coherent: Target coherent count.
-        n_incoherent: Target incoherent count (``<=0`` for all).
-        train_frac: Fraction in train split.
-        val_frac: Fraction in val split (test = 1 - train - val).
-        seed: Random seed.
-        skip_download: If True, don't try to download VG coherent images; use
-            only those already cached.
+    If ``coco_index_path`` is given, a fraction ``coco_fraction`` of the
+    ``n_coherent`` target comes from MS-COCO instead of Visual Genome — this
+    diversifies the coherent pool with cleaner category-labelled photos.
     """
     vg_dir = Path(vg_dir)
     synthetic_dir = Path(synthetic_dir)
@@ -240,30 +293,50 @@ def main(
             "Run scripts/generate_synthetic.py first."
         )
 
-    # Step 2 — Coherent sampling
+    # Step 2 — Coherent sampling (VG + optional COCO)
     logger.info("=" * 60)
-    logger.info("STEP 2/4 — Sampling coherent VG records")
+    logger.info("STEP 2/4 — Sampling coherent records")
     logger.info("=" * 60)
+    n_coco = int(round(n_coherent * max(0.0, min(1.0, coco_fraction))))
+    n_vg = n_coherent - n_coco
+
+    coco_records: list = []
+    if coco_index_path is not None and n_coco > 0:
+        coco_records = load_coco_records(Path(coco_index_path), n_coco, rng)
+
     coherent = sample_coherent_records(
-        vg_dir / "image_data.json", excluded_ids, n_coherent, rng
+        vg_dir / "image_data.json", excluded_ids, n_vg, rng
     )
+    logger.info("Coherent composition: VG=%d  COCO=%d  (target=%d)",
+                len(coherent), len(coco_records), n_coherent)
 
     # Step 3 — Fetch (or verify) coherent images
     logger.info("=" * 60)
     logger.info("STEP 3/4 — Ensuring coherent images are on disk")
     logger.info("=" * 60)
     cache_dir = vg_dir / "images"
+    coco_cache_dir = Path(vg_dir).parent / "mscoco" / "images"
     if skip_download:
         cache_dir.mkdir(parents=True, exist_ok=True)
+        coco_cache_dir.mkdir(parents=True, exist_ok=True)
         coherent = [
             {**r, "image_path": str(cache_dir / f"{r['image_id']}.jpg")}
             for r in coherent
             if (cache_dir / f"{r['image_id']}.jpg").exists()
         ]
-        logger.info("Skip-download: %d coherent images available from cache", len(coherent))
+        coco_records = [
+            {**r, "image_path": str(coco_cache_dir / f"{r['image_id']}.jpg")}
+            for r in coco_records
+            if (coco_cache_dir / f"{r['image_id']}.jpg").exists()
+        ]
+        logger.info("Skip-download: %d VG + %d COCO coherent images cached",
+                    len(coherent), len(coco_records))
     else:
         coherent = fetch_coherent_images(coherent, cache_dir)
+        if coco_records:
+            coco_records = fetch_coherent_images(coco_records, coco_cache_dir)
 
+    coherent = coherent + coco_records
     if not coherent:
         raise RuntimeError("No coherent images available on disk — aborting.")
 
@@ -284,11 +357,12 @@ def main(
         n1 = sum(1 for r in recs if r["label"] == 1)
         return f"coherent={n0}, incoherent={n1}"
 
+    with_bbox = sum(1 for r in incoherent if r.get("paste_bbox"))
     print("\n" + "=" * 60)
     print("  SceneIQ — Dataset Split Summary")
     print("=" * 60)
     print(f"  Coherent samples used:     {len(coherent)} (target {n_coherent})")
-    print(f"  Incoherent samples used:   {len(incoherent)}")
+    print(f"  Incoherent samples used:   {len(incoherent)} (with paste_bbox: {with_bbox})")
     print(f"  Total:                     {len(all_records)}")
     print(f"  Train: {len(splits['train']):>5}  ({_class_balance(splits['train'])})")
     print(f"  Val:   {len(splits['val']):>5}  ({_class_balance(splits['val'])})")
@@ -298,50 +372,32 @@ def main(
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments.
-
-    Returns:
-        Parsed arguments namespace.
-    """
     parser = argparse.ArgumentParser(
         description="Assemble SceneIQ train/val/test splits.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    parser.add_argument("--vg-dir", type=str, default=str(VISUAL_GENOME_DIR))
+    parser.add_argument("--synthetic-dir", type=str, default=str(SYNTHETIC_DIR))
+    parser.add_argument("--output-dir", type=str, default=str(PROCESSED_DIR / "splits"))
+    parser.add_argument("--n-coherent", type=int, default=TARGET_COHERENT_SIZE)
+    parser.add_argument("--n-incoherent", type=int, default=TARGET_INCOHERENT_SIZE)
+    parser.add_argument("--train-frac", type=float, default=0.70)
+    parser.add_argument("--val-frac", type=float, default=0.15)
+    parser.add_argument("--seed", type=int, default=RANDOM_SEED)
+    parser.add_argument("--skip-download", action="store_true")
     parser.add_argument(
-        "--vg-dir", type=str, default=str(VISUAL_GENOME_DIR),
-        help="Directory with VG JSON files and image cache.",
+        "--coco-index",
+        type=str,
+        default=None,
+        help="Path to coherent_records_<split>.json from build_coco_index.py. "
+             "When supplied, a fraction of the coherent pool is drawn from COCO.",
     )
     parser.add_argument(
-        "--synthetic-dir", type=str, default=str(SYNTHETIC_DIR),
-        help="Directory with synthetic metadata.json and images/.",
-    )
-    parser.add_argument(
-        "--output-dir", type=str, default=str(PROCESSED_DIR / "splits"),
-        help="Where to write train.json, val.json, test.json.",
-    )
-    parser.add_argument(
-        "--n-coherent", type=int, default=TARGET_COHERENT_SIZE,
-        help="Target number of coherent samples.",
-    )
-    parser.add_argument(
-        "--n-incoherent", type=int, default=TARGET_INCOHERENT_SIZE,
-        help="Target number of incoherent samples (<=0 keeps all).",
-    )
-    parser.add_argument(
-        "--train-frac", type=float, default=0.70,
-        help="Fraction of records assigned to train.",
-    )
-    parser.add_argument(
-        "--val-frac", type=float, default=0.15,
-        help="Fraction assigned to val (test = 1 - train - val).",
-    )
-    parser.add_argument(
-        "--seed", type=int, default=RANDOM_SEED,
-        help="Random seed for reproducibility.",
-    )
-    parser.add_argument(
-        "--skip-download", action="store_true",
-        help="Use only cached VG images; don't download missing ones.",
+        "--coco-fraction",
+        type=float,
+        default=0.0,
+        help="Fraction of n_coherent to draw from COCO (0.0 = VG only, "
+             "1.0 = COCO only). Ignored unless --coco-index is set.",
     )
     return parser.parse_args()
 
@@ -359,4 +415,6 @@ if __name__ == "__main__":
         val_frac=args.val_frac,
         seed=args.seed,
         skip_download=args.skip_download,
+        coco_index_path=args.coco_index,
+        coco_fraction=args.coco_fraction,
     )

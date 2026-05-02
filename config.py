@@ -66,6 +66,18 @@ LEARNING_RATE = 2e-5
 NUM_EPOCHS = 10
 
 # =============================================================================
+# Phase 2 — Scene-graph fusion
+# =============================================================================
+SCENE_GRAPHS_DIR = PROCESSED_DIR / "scene_graphs"
+GAT_HIDDEN_DIM = 128
+GAT_NUM_HEADS = 4
+GAT_NUM_LAYERS = 2
+GAT_DROPOUT = 0.3
+CROSS_ATTN_DIM = 256
+CLASSIFIER_DROPOUT = 0.3
+EARLY_STOPPING_PATIENCE = 3
+
+# =============================================================================
 # WandB
 # =============================================================================
 WANDB_PROJECT = "sceneiq"
@@ -75,5 +87,6 @@ WANDB_ENTITY = None  # set to your wandb username/team or leave None
 # Ensure critical directories exist at import time
 # =============================================================================
 for _dir in [RAW_DIR, PROCESSED_DIR, SYNTHETIC_DIR, THUMBNAILS_DIR,
-             MODELS_DIR, CONFIGS_DIR, EVALUATION_DIR, LOGS_DIR]:
+             MODELS_DIR, CONFIGS_DIR, EVALUATION_DIR, LOGS_DIR,
+             SCENE_GRAPHS_DIR]:
     _dir.mkdir(parents=True, exist_ok=True)

@@ -31,6 +31,7 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import (
     PROCESSED_DIR,
+    PROJECT_ROOT,
     RANDOM_SEED,
     SYNTHETIC_DIR,
     TARGET_COHERENT_SIZE,
@@ -86,7 +87,7 @@ def fetch_coherent_images(records: list, cache_dir: Path) -> list:
 
     Returns:
         Subset of ``records`` whose images are available locally, each with an
-        added ``"image_path"`` field (absolute path as a string).
+        added ``"image_path"`` field (relative path from project root).
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
     ok: list = []
@@ -100,7 +101,10 @@ def fetch_coherent_images(records: list, cache_dir: Path) -> list:
             except Exception as exc:
                 logger.warning("Skipping image %d: %s", rec["image_id"], exc)
                 continue
-        rec["image_path"] = str(dest)
+        try:
+            rec["image_path"] = str(dest.relative_to(PROJECT_ROOT)).replace("\\", "/")
+        except ValueError:
+            rec["image_path"] = str(dest)
         ok.append(rec)
     logger.info("Coherent images usable: %d / %d", len(ok), len(records))
     return ok
@@ -135,8 +139,12 @@ def load_incoherent_records(
         img_path = synthetic_dir / m["output_path"]
         if not img_path.exists():
             continue
+        try:
+            rel_path = str(img_path.relative_to(PROJECT_ROOT)).replace("\\", "/")
+        except ValueError:
+            rel_path = str(img_path)
         records.append({
-            "image_path": str(img_path),
+            "image_path": rel_path,
             "alien_object": m["alien_object"],
             "scene_image_id": m["scene_image_id"],
             "label": 1,
@@ -256,7 +264,7 @@ def main(
     if skip_download:
         cache_dir.mkdir(parents=True, exist_ok=True)
         coherent = [
-            {**r, "image_path": str(cache_dir / f"{r['image_id']}.jpg")}
+            {**r, "image_path": str((cache_dir / f"{r['image_id']}.jpg").relative_to(PROJECT_ROOT)).replace("\\", "/")}
             for r in coherent
             if (cache_dir / f"{r['image_id']}.jpg").exists()
         ]

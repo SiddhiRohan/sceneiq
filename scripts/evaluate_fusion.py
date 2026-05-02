@@ -183,7 +183,8 @@ def build_bbox_lookup(metadata_path: Path) -> dict:
         img_path = entry.get("output_path", "")
         bbox = entry.get("paste_bbox")
         if bbox:
-            lookup[img_path] = tuple(bbox)
+            fname = Path(img_path).name
+            lookup[fname] = tuple(bbox)
     return lookup
 
 
@@ -219,13 +220,8 @@ def compute_pointing_accuracy(
             continue
 
         img_path = rec.get("image_path", "")
-        bbox = bbox_lookup.get(img_path)
-        if bbox is None:
-            # Try relative path match
-            for key in bbox_lookup:
-                if key in img_path or img_path in key:
-                    bbox = bbox_lookup[key]
-                    break
+        fname = Path(img_path).name
+        bbox = bbox_lookup.get(fname)
         if bbox is None:
             continue
 
@@ -243,7 +239,11 @@ def compute_pointing_accuracy(
         # Since ViT resizes to 224x224, we need to load the original to get scale
         # Approximation: use bbox directly if it seems reasonable
         try:
-            orig_img = Image.open(img_path)
+            resolved = Path(img_path)
+            if not resolved.is_absolute():
+                from config import PROJECT_ROOT
+                resolved = PROJECT_ROOT / resolved
+            orig_img = Image.open(resolved)
             ow, oh = orig_img.size
             sx = image_size / ow
             sy = image_size / oh
@@ -304,9 +304,13 @@ def generate_heatmaps(
             missed.append(i)
 
     def _save_heatmaps(indices, prefix):
+        from config import PROJECT_ROOT
         for j, idx in enumerate(indices[:n_samples]):
             try:
-                img = Image.open(records[idx]["image_path"]).convert("RGB")
+                img_path = Path(records[idx]["image_path"])
+                if not img_path.is_absolute():
+                    img_path = PROJECT_ROOT / img_path
+                img = Image.open(img_path).convert("RGB")
             except Exception:
                 continue
 

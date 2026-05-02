@@ -48,8 +48,10 @@ from config import (
     NUM_EPOCHS,
     NUM_WORKERS,
     PROCESSED_DIR,
+    PROJECT_ROOT,
     RANDOM_SEED,
     SCENE_GRAPHS_DIR,
+    SYNTHETIC_DIR,
     VIT_MODEL_NAME,
     WANDB_ENTITY,
     WANDB_PROJECT,
@@ -158,12 +160,14 @@ class SceneIQFusionDataset(Dataset):
         name_to_idx: dict,
         augment: bool = False,
         need_images: bool = True,
+        bbox_lookup: dict | None = None,
     ):
         self.records = load_json(split_path)
         self.processor = processor
         self.graph_index = graph_index
         self.name_to_idx = name_to_idx
         self.need_images = need_images
+        self.bbox_lookup = bbox_lookup or {}
         self.aug = get_augmentation_pipeline() if augment else None
         self.rng = random.Random(42)
         logger.info(
@@ -181,13 +185,34 @@ class SceneIQFusionDataset(Dataset):
 
         # Image
         if self.need_images:
-            img = Image.open(rec["image_path"]).convert("RGB")
+            img_path = Path(rec["image_path"])
+            if not img_path.is_absolute():
+                img_path = PROJECT_ROOT / img_path
+            img = Image.open(img_path).convert("RGB")
+            orig_w, orig_h = img.size
             if self.aug is not None:
                 img_np = np.array(img)
                 img_np = self.aug(image=img_np)["image"]
                 img = Image.fromarray(img_np)
             pixel_values = self.processor(images=img, return_tensors="pt")["pixel_values"][0]
             result["pixel_values"] = pixel_values
+
+            # Build 14x14 patch mask for localization (incoherent only)
+            patch_mask = torch.zeros(196, dtype=torch.float32)
+            if label == 1:
+                fname = Path(rec.get("image_path", "")).name
+                bbox = self.bbox_lookup.get(fname)
+                if bbox is not None:
+                    bx, by, bw, bh = bbox
+                    sx, sy = 224.0 / orig_w, 224.0 / orig_h
+                    bx_s, by_s = bx * sx, by * sy
+                    bw_s, bh_s = bw * sx, bh * sy
+                    for row in range(14):
+                        for col in range(14):
+                            px, py = col * 16 + 8, row * 16 + 8
+                            if bx_s <= px <= bx_s + bw_s and by_s <= py <= by_s + bh_s:
+                                patch_mask[row * 14 + col] = 1.0
+            result["patch_mask"] = patch_mask
 
         # Scene graph
         if label == 0:
@@ -226,6 +251,9 @@ def collate_fusion(batch: list) -> dict:
 
     if has_images:
         result["pixel_values"] = torch.stack([b["pixel_values"] for b in batch])
+
+    if "patch_mask" in batch[0]:
+        result["patch_masks"] = torch.stack([b["patch_mask"] for b in batch])
 
     # Build PyG batch
     data_list = []
@@ -337,8 +365,8 @@ def run_epoch_gat(model, loader, device, optimizer, desc):
     }
 
 
-def run_epoch_fusion(model, loader, device, optimizer, desc):
-    """Train/eval loop for the fusion model.
+def run_epoch_fusion(model, loader, device, optimizer, desc, loc_weight=0.5):
+    """Train/eval loop for the fusion model with localization loss.
 
     Args:
         model: FusionModel.
@@ -346,13 +374,15 @@ def run_epoch_fusion(model, loader, device, optimizer, desc):
         device: Target device.
         optimizer: Optimizer (None for eval).
         desc: Progress bar label.
+        loc_weight: Weight for the localization BCE loss.
 
     Returns:
         Dict with loss, accuracy, f1.
     """
     is_train = optimizer is not None
     model.train(is_train)
-    criterion = nn.CrossEntropyLoss()
+    cls_criterion = nn.CrossEntropyLoss()
+    loc_criterion = nn.BCELoss(reduction="none")
     total_loss = 0.0
     all_preds, all_labels = [], []
 
@@ -365,7 +395,18 @@ def run_epoch_fusion(model, loader, device, optimizer, desc):
             node_counts = batch["node_counts"]
 
             out = model(pv, gb.x, gb.edge_index, gb.batch, node_counts)
-            loss = criterion(out["logits"], labels)
+            cls_loss = cls_criterion(out["logits"], labels)
+
+            # Localization loss: BCE on patch scores for incoherent samples
+            loss = cls_loss
+            if "patch_masks" in batch:
+                patch_masks = batch["patch_masks"].to(device, non_blocking=True)
+                incoherent_mask = (labels == 1)
+                if incoherent_mask.any():
+                    loc_scores = out["patch_scores"][incoherent_mask]
+                    loc_targets = patch_masks[incoherent_mask]
+                    loc_loss = loc_criterion(loc_scores, loc_targets).mean()
+                    loss = cls_loss + loc_weight * loc_loss
 
             if is_train:
                 optimizer.zero_grad()
@@ -470,10 +511,26 @@ def main(
     if need_images:
         processor = ViTImageProcessor.from_pretrained(model_name)
 
+    # Build bbox lookup for localization loss (fusion mode)
+    # Key by filename since metadata uses relative paths and records use absolute
+    bbox_lookup = {}
+    if model_type == "fusion":
+        metadata_path = SYNTHETIC_DIR / "metadata.json"
+        if metadata_path.exists():
+            metadata = load_json(metadata_path)
+            for entry in metadata:
+                out_path = entry.get("output_path", "")
+                bbox = entry.get("paste_bbox")
+                if bbox:
+                    fname = Path(out_path).name
+                    bbox_lookup[fname] = tuple(bbox)
+            logger.info("Bbox lookup: %d entries", len(bbox_lookup))
+
     # Datasets
     ds_kwargs = dict(
         processor=processor, graph_index=graph_index,
         name_to_idx=name_to_idx, need_images=need_images,
+        bbox_lookup=bbox_lookup,
     )
     train_ds = SceneIQFusionDataset(
         splits_dir / "train.json", augment=augment, **ds_kwargs,

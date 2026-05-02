@@ -37,6 +37,7 @@ from config import (
     NUM_EPOCHS,
     NUM_WORKERS,
     PROCESSED_DIR,
+    PROJECT_ROOT,
     RANDOM_SEED,
     VIT_MODEL_NAME,
     WANDB_ENTITY,
@@ -66,9 +67,16 @@ class SceneIQDataset(Dataset):
     def __len__(self) -> int:
         return len(self.records)
 
+    def _resolve_path(self, image_path: str) -> Path:
+        """Resolve a potentially relative image path against project root."""
+        p = Path(image_path)
+        if p.is_absolute():
+            return p
+        return PROJECT_ROOT / p
+
     def __getitem__(self, idx: int) -> dict:
         rec = self.records[idx]
-        img = Image.open(rec["image_path"]).convert("RGB")
+        img = Image.open(self._resolve_path(rec["image_path"])).convert("RGB")
         pixel_values = self.processor(images=img, return_tensors="pt")["pixel_values"][0]
         return {
             "pixel_values": pixel_values,

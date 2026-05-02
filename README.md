@@ -1,96 +1,183 @@
 # SceneIQ
 
-**Detecting Logical Inconsistencies in Real-World Photographs Using Vision Transformers**
+**Detecting Logical Inconsistencies in Real-World Photographs Using Vision Transformers and Scene-Graph Fusion**
 
-MSML640 — University of Maryland
+MSML640 — Computer Vision, Spring 2026  
+University of Maryland
+
+**Group 12:** Siddhi Rohan Chakka, Krishna Kishore Buddi, Dhanush Vasa
 
 ---
 
 ## Overview
 
-SceneIQ identifies logically incoherent elements in photographs (e.g., a
-fireplace on a beach, snow in a desert) by combining Vision Transformer (ViT)
-features with scene-graph reasoning via Graph Neural Networks.
+SceneIQ classifies whether a photograph is **coherent** (the scene makes sense)
+or **incoherent** (an out-of-place object has been inserted). It combines a
+Vision Transformer (ViT) backbone with a Graph Attention Network (GAT) that
+encodes scene-graph relationships, fused via cross-attention. The model also
+produces per-patch inconsistency heatmaps that highlight where the anomaly is.
 
-**Datasets:** Visual Genome (108K), MS-COCO (330K), VisualCOMET (59K)
+**Final model performance (test set, n=2,250):**
+
+| Metric    | Score  |
+|-----------|--------|
+| Accuracy  | 94.6%  |
+| F1        | 91.8%  |
+| ROC-AUC   | 98.0%  |
+
+## Quick Start — Run Inference
+
+### Step 1: Clone or unzip the repository
+
+```bash
+git clone https://github.com/SiddhiRohan/sceneiq.git
+cd sceneiq
+```
+
+Or unzip the submitted code archive and `cd` into it. The trained model
+checkpoint (`models/fusion/best.pt`) is included — no download needed.
+
+### Step 2: Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### Step 3: Run inference
+
+```bash
+# Basic prediction
+python scripts/infer.py path/to/your/image.jpg --model-type fusion
+
+# With inconsistency heatmap overlay
+python scripts/infer.py path/to/your/image.jpg --model-type fusion --heatmap
+
+# Save output to file instead of displaying
+python scripts/infer.py path/to/your/image.jpg --model-type fusion --heatmap --save output.png
+```
+
+**Or run the demo script to test on a sample image:**
+
+```bash
+bash run_demo.sh
+```
+
+That's it — 3 steps, no retraining required.
 
 ## Project Structure
 
 ```
 sceneiq/
-├── config.py         # Central constants (paths, thresholds, seeds)
-├── utils.py          # Shared helpers (logging, seeding, JSON I/O, timer)
-├── requirements.txt  # Pinned Python dependencies
-├── data/
-│   ├── raw/          # Downloaded datasets
-│   ├── processed/    # Cleaned and labeled data
-│   ├── synthetic/    # Augmented incoherent images
-│   └── thumbnails/   # For manual verification
-├── scripts/          # Pipeline scripts (each with argparse + __main__)
-├── models/           # Model definitions and checkpoints
-├── evaluation/       # Metrics and visualization code
-├── notebooks/        # EDA and result analysis
-└── configs/          # Hyperparameter YAML/JSON files
+├── config.py                  # Central configuration (paths, hyperparameters)
+├── utils.py                   # Shared utilities (logging, JSON I/O, seeding)
+├── requirements.txt           # Python dependencies
+├── run_demo.sh                # One-command demo script
+│
+├── scripts/
+│   ├── infer.py               # Single-image inference (ViT or fusion)
+│   ├── models.py              # Model architectures (GAT, Fusion, etc.)
+│   ├── train.py               # Phase 1 ViT-only training
+│   ├── train_fusion.py        # Phase 2 fusion training (ViT+GAT)
+│   ├── evaluate.py            # Phase 1 evaluation
+│   ├── evaluate_fusion.py     # Phase 2 evaluation with localization
+│   ├── extract_scene_graphs.py # Extract scene graphs from Visual Genome
+│   ├── download_vg.py         # Download Visual Genome dataset
+│   ├── build_co_occurrence.py # Build object co-occurrence statistics
+│   ├── generate_synthetic.py  # Generate incoherent composite images
+│   └── prepare_dataset.py     # Assemble train/val/test splits
+│
+├── models/                    # Model checkpoints
+│   └── fusion/best.pt         # Final trained model (included in repo)
+│
+├── evaluation/                # Evaluation outputs (metrics, plots, heatmaps)
+├── data/                      # Dataset files (not included in repo)
+│   ├── raw/visual_genome/     # Visual Genome images and annotations
+│   ├── processed/             # Train/val/test splits, scene graphs
+│   └── synthetic/             # Generated incoherent images
+│
+└── report/                    # LaTeX source for the project report
 ```
 
-## Setup
+## Model Architecture
+
+The fusion model has three branches:
+
+1. **ViT backbone** (`google/vit-base-patch16-224`): extracts 196 patch token
+   embeddings (14x14 grid) from the input image.
+
+2. **GAT encoder**: embeds scene-graph nodes (object categories) and applies
+   multi-head graph attention over relationship edges to produce per-node
+   embeddings.
+
+3. **Cross-attention fusion**: ViT patch tokens (queries) attend to GAT node
+   embeddings (keys/values), producing fused representations that combine
+   visual and structural information.
+
+Two output heads:
+- **Classification head**: mean-pooled fused features through a linear layer
+  for binary coherent/incoherent prediction.
+- **Localization head**: per-patch sigmoid scores producing a 14x14
+  inconsistency heatmap.
+
+## Ablation Study
+
+| Model           | Accuracy | F1    | Description                     |
+|-----------------|----------|-------|---------------------------------|
+| ViT + GAT Fusion| 94.6%    | 91.8% | Full model with cross-attention |
+| ViT-only (Ph. 1)| 94.4%    | 91.5% | ViT classifier, no scene graph  |
+| ViT regularized | 90.5%    | 84.1% | ViT with augmentation + dropout |
+| GAT-only        | 66.7%    | 0.0%  | Scene graph alone (majority cls) |
+
+The fusion model outperforms all baselines. The GAT-only result confirms that
+visual features are essential — scene-graph structure alone cannot distinguish
+coherent from incoherent images. However, combining both modalities via
+cross-attention yields the best performance.
+
+## Reproducing the Full Pipeline
+
+If you want to retrain from scratch (not required for grading):
 
 ```bash
-# 1. Clone and enter the repo
-git clone <repo-url>
-cd sceneiq
+# 1. Download Visual Genome
+python scripts/download_vg.py
 
-# 2. Create a virtual environment
-python -m venv venv
-source venv/bin/activate   # Linux/Mac
-venv\Scripts\activate      # Windows
+# 2. Build co-occurrence statistics
+python scripts/build_co_occurrence.py
 
-# 3. Install dependencies
-pip install -r requirements.txt
-```
+# 3. Generate synthetic incoherent images
+python scripts/generate_synthetic.py --n-samples 5000
 
-## Pipeline Scripts
+# 4. Prepare train/val/test splits
+python scripts/prepare_dataset.py
 
-Each script in `scripts/` follows these conventions:
-- **argparse** CLI arguments for all configurable parameters
-- **Logging** with timestamps (not bare `print`)
-- **Saves intermediate outputs** so nothing needs recomputation
-- Run any script with `--help` to see its options
+# 5. Extract scene graphs
+python scripts/extract_scene_graphs.py
 
-| Script | Purpose |
-|--------|---------|
-| `scripts/download_data.py` | Download Visual Genome, MS-COCO, VisualCOMET |
-| `scripts/build_co_occurrence.py` | Build object co-occurrence matrices |
-| `scripts/generate_synthetic.py` | Create incoherent images via augmentation |
-| `scripts/prepare_dataset.py` | Assemble final train/val/test splits |
-| `scripts/train.py` | Train ViT-based inconsistency classifier |
-| `scripts/evaluate.py` | Run evaluation metrics and generate plots |
+# 6. Train the fusion model
+python scripts/train_fusion.py --model fusion --augment --patience 3
 
-Example:
-
-```bash
-python scripts/download_data.py --dataset visual_genome --output data/raw/visual_genome
-python scripts/train.py --epochs 10 --batch-size 32 --lr 2e-5
+# 7. Evaluate
+python scripts/evaluate_fusion.py --model fusion --compare
 ```
 
 ## Configuration
 
-All project constants live in `config.py`:
-- Dataset paths and sizes
-- Co-occurrence frequency threshold (default: 10)
-- Target dataset sizes (10K coherent, 5K incoherent)
-- Random seed (42)
-- ViT image size (224x224)
-- Training hyperparameters
+All project constants live in `config.py`. Key settings:
 
-Override at runtime via script CLI arguments; `config.py` provides defaults.
+- **ViT model**: `google/vit-base-patch16-224` (ImageNet-21k pretrained)
+- **GAT**: 128-dim hidden, 4 heads, 2 layers, 0.3 dropout
+- **Training**: AdamW, lr=2e-5, batch size 32, cosine LR schedule
+- **Early stopping**: patience=3 on validation accuracy
+- **Data**: 10K coherent + 5K incoherent, 70/15/15 train/val/test split
 
-## Experiment Tracking
+Override defaults via CLI arguments on any script (`--help` for options).
 
-Experiments are logged to [Weights & Biases](https://wandb.ai). Set your entity
-in `config.py` or pass `--wandb-entity` to training scripts.
+## Requirements
 
-```bash
-wandb login
-python scripts/train.py --wandb
-```
+- Python 3.10+
+- PyTorch 2.x with CUDA (GPU recommended for inference speed)
+- See `requirements.txt` for full dependency list
+
+## License
+
+This project was developed for MSML640 at the University of Maryland.

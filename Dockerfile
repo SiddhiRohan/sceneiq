@@ -40,7 +40,7 @@ COPY scripts/infer.py scripts/models.py scripts/docker_demo.py scripts/__init__.
 
 # Copy trained model and vocabulary
 COPY models/fusion/best.pt ./models/fusion/best.pt
-COPY data/processed/scene_graphs/vocab.json ./data/processed/scene_graphs/vocab.json
+COPY models/fusion/vocab.json ./models/fusion/vocab.json
 
 # Copy sample images for demo
 COPY sample_coherent.jpg sample_incoherent.jpg ./

@@ -38,7 +38,7 @@ def main():
             image_path=image_path,
             checkpoint="models/fusion/best.pt",
             model_name="google/vit-base-patch16-224",
-            graphs_dir="data/processed/scene_graphs",
+            graphs_dir="models/fusion",
         )
 
         pred = "COHERENT" if result["coherent_prob"] > result["incoherent_prob"] else "INCOHERENT"

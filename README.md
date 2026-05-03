@@ -71,10 +71,15 @@ sceneiq/
 ├── config.py                  # Central configuration (paths, hyperparameters)
 ├── utils.py                   # Shared utilities (logging, JSON I/O, seeding)
 ├── requirements.txt           # Python dependencies
-├── run_demo.sh                # One-command demo script
+├── run_demo.sh                # One-command local demo script
+├── Dockerfile                 # Docker containerization for inference
+├── docker_run.sh              # One-command Docker build + run script
+├── sample_coherent.jpg        # Sample coherent image for demo
+├── sample_incoherent.jpg      # Sample incoherent image for demo
 │
 ├── scripts/
 │   ├── infer.py               # Single-image inference (ViT or fusion)
+│   ├── docker_demo.py         # Docker demo entrypoint
 │   ├── models.py              # Model architectures (GAT, Fusion, etc.)
 │   ├── train.py               # Phase 1 ViT-only training
 │   ├── train_fusion.py        # Phase 2 fusion training (ViT+GAT)
@@ -190,19 +195,29 @@ internet to pull dependencies) and then runs inference. After the
 initial build, the image is fully self-contained: all dependencies,
 the trained model checkpoint, and pretrained ViT weights are baked in.
 
+**What happens:**
+- Runs the fusion model on two bundled sample images (one coherent, one incoherent)
+- Prints predictions and confidence scores to the terminal
+- Saves heatmap result images to `docker_output/` on your machine
+- Automatically opens the result images so you can see the predictions visually
+
 You can also build and run manually:
 
 ```bash
 docker build -t sceneiq .
-docker run --rm sceneiq
+docker run --rm -v "$(pwd)/docker_output:/app/output" sceneiq
 ```
 
 ## Requirements
 
+**For Docker (recommended):**
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
+- No other dependencies needed
+
+**For local setup:**
 - Python 3.10+
-- PyTorch 2.x with CUDA (GPU recommended for inference speed)
+- PyTorch 2.x (GPU recommended for inference speed)
 - See `requirements.txt` for full dependency list
-- Docker (optional, for containerized execution)
 
 ## License
 

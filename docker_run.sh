@@ -34,7 +34,7 @@ if [ -n "$1" ]; then
         -v "$INPUT_PATH:/app/input.jpg" \
         -v "$OUTPUT_DIR:/app/output" \
         "$IMAGE_NAME" \
-        python scripts/infer.py /app/input.jpg --model-type fusion --heatmap --save /app/output/result.png
+        python scripts/infer.py /app/input.jpg --model-type fusion --graphs-dir models/fusion --heatmap --save /app/output/result.png
 else
     # Run demo on bundled sample images
     echo "Running demo on sample images..."

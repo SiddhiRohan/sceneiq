@@ -2,7 +2,7 @@
 # Build:  docker build -t sceneiq .
 # Run:    docker run sceneiq
 # Run on your own image:
-#   docker run -v /path/to/image.jpg:/app/input.jpg sceneiq python scripts/infer.py /app/input.jpg --model-type fusion --heatmap --save /app/output.png
+#   docker run -v /path/to/image.jpg:/app/input.jpg sceneiq python scripts/infer.py /app/input.jpg --model-type fusion --graphs-dir models/fusion --heatmap --save /app/output.png
 
 FROM python:3.10-slim
 

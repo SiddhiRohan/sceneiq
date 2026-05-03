@@ -12,6 +12,7 @@ albumentations==2.0.4
 
 # Classical ML & data
 scikit-learn==1.6.1
+scipy==1.14.1
 pandas==2.2.3
 numpy==2.2.2
 Pillow==11.1.0

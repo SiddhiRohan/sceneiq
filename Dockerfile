@@ -13,9 +13,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install PyTorch CPU-only first (smaller image, no CUDA)
+RUN pip install --no-cache-dir \
+    torch==2.6.0+cpu \
+    torchvision==0.21.0+cpu \
+    --extra-index-url https://download.pytorch.org/whl/cpu
+
+# Install torch-geometric with CPU-only wheels
+RUN pip install --no-cache-dir \
+    torch-geometric==2.6.1 \
+    --find-links https://data.pyg.org/whl/torch-2.6.0+cpu.html
+
+# Install remaining Python dependencies (no torch/torchvision/pyg — already installed)
+COPY requirements-docker.txt .
+RUN pip install --no-cache-dir -r requirements-docker.txt
 
 # Pre-download ViT weights so the container is fully self-contained
 RUN python -c "from transformers import ViTModel, ViTImageProcessor; \
@@ -24,7 +35,7 @@ RUN python -c "from transformers import ViTModel, ViTImageProcessor; \
 
 # Copy project code
 COPY config.py utils.py ./
-COPY scripts/infer.py scripts/models.py scripts/__init__.py* ./scripts/
+COPY scripts/infer.py scripts/models.py scripts/docker_demo.py scripts/__init__.py ./scripts/
 
 # Copy trained model and vocabulary
 COPY models/fusion/best.pt ./models/fusion/best.pt

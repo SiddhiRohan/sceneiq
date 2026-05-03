@@ -174,7 +174,8 @@ Override defaults via CLI arguments on any script (`--help` for options).
 
 ## Docker (single command)
 
-Run the entire project with one command, no local Python or dependencies needed:
+Run the entire project with one command — no local Python or dependencies needed.
+Only requires [Docker](https://www.docker.com/products/docker-desktop/) to be installed and running.
 
 ```bash
 # Run demo on bundled sample images (builds automatically on first run)
@@ -184,12 +185,12 @@ bash docker_run.sh
 bash docker_run.sh path/to/your/image.jpg
 ```
 
-That's it. The script builds the Docker image on first run (~5 minutes)
-and then runs inference. The image is fully self-contained: all
-dependencies, the trained model checkpoint, and pretrained ViT weights
-are baked in. No internet connection is needed after the initial build.
+The script builds the Docker image on first run (~5 minutes, requires
+internet to pull dependencies) and then runs inference. After the
+initial build, the image is fully self-contained: all dependencies,
+the trained model checkpoint, and pretrained ViT weights are baked in.
 
-You can also build and run manually if you prefer:
+You can also build and run manually:
 
 ```bash
 docker build -t sceneiq .

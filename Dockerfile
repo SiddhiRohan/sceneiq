@@ -25,8 +25,9 @@ RUN pip install --no-cache-dir \
     --find-links https://data.pyg.org/whl/torch-2.6.0+cpu.html
 
 # Install remaining Python dependencies (no torch/torchvision/pyg — already installed)
-COPY requirements-docker.txt .
-RUN pip install --no-cache-dir -r requirements-docker.txt
+COPY requirements.txt .
+RUN grep -v -E '^#|^$|^torch==|^torchvision==|^torch-geometric==' requirements.txt > /tmp/reqs.txt && \
+    pip install --no-cache-dir -r /tmp/reqs.txt
 
 # Pre-download ViT weights so the container is fully self-contained
 RUN python -c "from transformers import ViTModel, ViTImageProcessor; \

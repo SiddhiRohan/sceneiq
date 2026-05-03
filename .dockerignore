@@ -1,0 +1,27 @@
+# Don't copy raw data or other large files into the Docker image
+data/raw/
+data/synthetic/
+data/processed/splits/
+data/processed/co_occurrence/
+evaluation/
+logs/
+report/
+notebooks/
+.git/
+.claude/
+__pycache__/
+*.pyc
+venv/
+.venv/
+wandb/
+models/vit/
+models/gat/
+models/best.pt
+models/last.pt
+models/fusion/last.pt
+models/fusion/history.json
+models/fusion/test_metrics.json
+*.mp4
+*.pdf
+slurm_train.sh
+PROJECT_GUIDE.md

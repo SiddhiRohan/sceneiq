@@ -172,11 +172,36 @@ All project constants live in `config.py`. Key settings:
 
 Override defaults via CLI arguments on any script (`--help` for options).
 
+## Docker (single command)
+
+Run the entire project with one command, no local Python or dependencies needed:
+
+```bash
+# Run demo on bundled sample images (builds automatically on first run)
+bash docker_run.sh
+
+# Run on your own image
+bash docker_run.sh path/to/your/image.jpg
+```
+
+That's it. The script builds the Docker image on first run (~5 minutes)
+and then runs inference. The image is fully self-contained: all
+dependencies, the trained model checkpoint, and pretrained ViT weights
+are baked in. No internet connection is needed after the initial build.
+
+You can also build and run manually if you prefer:
+
+```bash
+docker build -t sceneiq .
+docker run --rm sceneiq
+```
+
 ## Requirements
 
 - Python 3.10+
 - PyTorch 2.x with CUDA (GPU recommended for inference speed)
 - See `requirements.txt` for full dependency list
+- Docker (optional, for containerized execution)
 
 ## License
 

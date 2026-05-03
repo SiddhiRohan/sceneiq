@@ -30,12 +30,15 @@ produces per-patch inconsistency heatmaps that highlight where the anomaly is.
 ### Step 1: Clone or unzip the repository
 
 ```bash
+git lfs install          # required once — installs Git LFS
 git clone https://github.com/SiddhiRohan/sceneiq.git
 cd sceneiq
 ```
 
-Or unzip the submitted code archive and `cd` into it. The trained model
-checkpoint (`models/fusion/best.pt`) is included — no download needed.
+> **Note:** This repo uses [Git LFS](https://git-lfs.github.com/) for the model
+> checkpoint (`models/fusion/best.pt`). Install Git LFS before cloning, otherwise
+> you'll get a broken pointer file instead of the actual model. Alternatively,
+> use the zip submission which includes the checkpoint directly.
 
 ### Step 2: Install dependencies
 

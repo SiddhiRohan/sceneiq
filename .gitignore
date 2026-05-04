@@ -50,14 +50,8 @@ Thumbs.db
 # Claude Code
 .claude/
 
-# Report build artifacts
-report/*.aux
-report/*.log
-report/*.out
-report/*.synctex.gz
-report/*.fls
-report/*.fdb_latexmk
-report/*.pdf
+# Report
+report/
 
 # Slurm logs
 slurm_*.out

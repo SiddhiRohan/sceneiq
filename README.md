@@ -67,6 +67,37 @@ bash run_demo.sh
 
 That's it — 3 steps, no retraining required.
 
+## Docker (single command)
+
+Run the entire project with one command — no local Python or dependencies needed.
+Only requires [Docker](https://www.docker.com/products/docker-desktop/) to be installed and running.
+
+```bash
+# Run demo on bundled sample images (builds automatically on first run)
+bash docker_run.sh
+
+# Run on your own image
+bash docker_run.sh path/to/your/image.jpg
+```
+
+The script builds the Docker image on first run (~5 minutes, requires
+internet to pull dependencies) and then runs inference. After the
+initial build, the image is fully self-contained: all dependencies,
+the trained model checkpoint, and pretrained ViT weights are baked in.
+
+**What happens:**
+- Runs the fusion model on two bundled sample images (one coherent, one incoherent)
+- Prints predictions and confidence scores to the terminal
+- Saves heatmap result images to `docker_output/` on your machine
+- Automatically opens the result images so you can see the predictions visually
+
+You can also build and run manually:
+
+```bash
+docker build -t sceneiq .
+docker run --rm -v "$(pwd)/docker_output:/app/output" sceneiq
+```
+
 ## Project Structure
 
 ```
@@ -179,37 +210,6 @@ All project constants live in `config.py`. Key settings:
 - **Data**: 10K coherent + 5K incoherent, 70/15/15 train/val/test split
 
 Override defaults via CLI arguments on any script (`--help` for options).
-
-## Docker (single command)
-
-Run the entire project with one command — no local Python or dependencies needed.
-Only requires [Docker](https://www.docker.com/products/docker-desktop/) to be installed and running.
-
-```bash
-# Run demo on bundled sample images (builds automatically on first run)
-bash docker_run.sh
-
-# Run on your own image
-bash docker_run.sh path/to/your/image.jpg
-```
-
-The script builds the Docker image on first run (~5 minutes, requires
-internet to pull dependencies) and then runs inference. After the
-initial build, the image is fully self-contained: all dependencies,
-the trained model checkpoint, and pretrained ViT weights are baked in.
-
-**What happens:**
-- Runs the fusion model on two bundled sample images (one coherent, one incoherent)
-- Prints predictions and confidence scores to the terminal
-- Saves heatmap result images to `docker_output/` on your machine
-- Automatically opens the result images so you can see the predictions visually
-
-You can also build and run manually:
-
-```bash
-docker build -t sceneiq .
-docker run --rm -v "$(pwd)/docker_output:/app/output" sceneiq
-```
 
 ## Requirements
 

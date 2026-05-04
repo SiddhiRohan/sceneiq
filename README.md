@@ -174,7 +174,7 @@ cross-attention yields the best performance.
 
 ## Reproducing the Full Pipeline
 
-If you want to retrain from scratch (not required for grading):
+If you want to retrain from scratch :
 
 ```bash
 # 1. Download Visual Genome
